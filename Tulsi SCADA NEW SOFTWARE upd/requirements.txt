@@ -1,0 +1,6 @@
+flask
+flask-cors
+pyodbc
+pandas
+openpyxl
+reportlab

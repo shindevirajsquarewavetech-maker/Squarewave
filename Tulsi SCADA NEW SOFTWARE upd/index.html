@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SCADA Chemical Usage Reporter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="flex h-screen overflow-hidden bg-slate-50">
+    
+    <aside class="w-72 bg-slate-900 text-slate-300 flex-shrink-0 hidden md:flex flex-col">
+        <div class="p-6 border-b border-slate-800">
+            <h1 class="text-2xl font-bold text-white tracking-wider flex items-center gap-2">
+                <span class="text-emerald-500 text-3xl">☍</span> SCADA
+            </h1>
+        </div>
+        <nav class="flex-grow p-4 space-y-4">
+            <a href="#" class="block px-4 py-3 bg-slate-800 text-white rounded-xl shadow-md border-l-4 border-emerald-500 font-medium text-lg">
+                📊 Main Dashboard
+            </a>
+            <hr class="border-slate-700">
+            <h3 class="px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Specific Reports</h3>
+            
+            <button onclick="document.getElementById('daily-modal').classList.add('active')" class="w-full text-left block px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl shadow-sm transition-colors font-medium text-lg border border-slate-700">
+                📅 Generate Daily Report
+            </button>
+            <button onclick="document.getElementById('monthly-modal').classList.add('active')" class="w-full text-left block px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl shadow-sm transition-colors font-medium text-lg border border-slate-700">
+                📆 Generate Monthly Report
+            </button>
+        </nav>
+    </aside>
+
+    <main class="flex-grow flex flex-col h-screen overflow-y-auto">
+        <header class="bg-white shadow-sm border-b border-slate-200 px-10 py-6 flex justify-between items-center sticky top-0 z-20">
+            <h2 class="text-3xl font-bold text-slate-800">Chemical Consumption Report</h2>
+            <div class="flex gap-4">
+                <button onclick="downloadFile('excel')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-lg font-bold shadow-sm transition-transform hover:-translate-y-0.5">📥 Excel Report</button>
+                <button onclick="downloadFile('pdf')" class="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-bold shadow-sm transition-transform hover:-translate-y-0.5">📄 PDF Summary</button>
+                <button onclick="downloadFile('chart-pdf')" class="bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 rounded-lg font-bold shadow-sm transition-transform hover:-translate-y-0.5">📊 Chart PDF</button>
+            </div>
+        </header>
+
+        <div class="p-6 space-y-8 max-w-full mx-auto w-full">
+            <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+                    <div>
+                        <label class="block text-sm font-bold text-slate-600 uppercase tracking-wide mb-2">Start Date</label>
+                        <input type="date" id="start-date" class="w-full p-4 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg font-medium text-slate-700">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-slate-600 uppercase tracking-wide mb-2">End Date</label>
+                        <input type="date" id="end-date" class="w-full p-4 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg font-medium text-slate-700">
+                    </div>
+                    <div>
+                        <button onclick="generateReport()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold p-4 rounded-lg shadow-sm transition-transform hover:-translate-y-0.5 flex justify-center items-center gap-2 text-lg">
+                            <span id="gen-btn-text">Generate Dashboard</span>
+                            <span id="gen-spinner" class="hidden animate-spin h-5 w-5 border-4 border-white border-t-transparent rounded-full"></span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <div id="error-container" class="hidden bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-lg shadow-sm">
+                <strong class="font-bold">Input Error:</strong> <span id="error-msg"></span>
+            </div>
+
+            <div id="results-area" class="space-y-8 hidden">
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 cursor-pointer hover:border-blue-500 transition-colors" onclick="openChartModal()">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold text-slate-800">Top 10 Chemical Consumers (KG)</h3>
+                        <span class="text-blue-600 font-medium text-sm bg-blue-50 px-3 py-1 rounded-md">⤢ Expand Chart</span>
+                    </div>
+                    <div style="height: 300px; width: 100%;"><canvas id="usageChartPreview"></canvas></div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden cursor-pointer hover:border-blue-500 transition-colors">
+                    <div class="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50" onclick="openTableModal()">
+                        <h3 class="font-bold text-slate-800 text-xl">Batch Logs & Total Weight</h3>
+                        <span class="text-blue-600 font-medium text-sm bg-blue-100 px-3 py-1 rounded-md">⤢ Expand Table</span>
+                    </div>
+                    <div class="overflow-x-auto" onclick="openTableModal()">
+                        <table class="w-full text-left border-collapse">
+                            <thead><tr id="table-header-preview" class="bg-slate-100 text-slate-600 text-sm uppercase tracking-wider"></tr></thead>
+                            <tbody id="table-body-preview" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div id="modal-overlay" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title" class="text-xl font-bold text-slate-800">Detailed View</h3>
+                <button onclick="closeModal('modal-overlay')" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold">✕ Close</button>
+            </div>
+            <div class="modal-body p-6 overflow-auto" id="modal-body"></div>
+        </div>
+    </div>
+
+    <div id="daily-modal" class="modal-overlay">
+        <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 class="text-xl font-bold text-slate-800">📅 Daily Report</h3>
+                <button onclick="closeModal('daily-modal')" class="text-slate-400 hover:text-red-500 font-bold text-xl">✕</button>
+            </div>
+            <div class="p-6 space-y-6">
+                <div>
+                    <label class="block text-sm font-bold text-slate-600 mb-2">Select Date</label>
+                    <input type="date" id="daily-date" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-lg">
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="downloadSpecial('daily', 'pdf')" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg font-bold shadow-sm">📄 Get PDF</button>
+                    <button onclick="downloadSpecial('daily', 'excel')" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg font-bold shadow-sm">📥 Get Excel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="monthly-modal" class="modal-overlay">
+        <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 class="text-xl font-bold text-slate-800">📆 Monthly Report</h3>
+                <button onclick="closeModal('monthly-modal')" class="text-slate-400 hover:text-red-500 font-bold text-xl">✕</button>
+            </div>
+            <div class="p-6 space-y-6">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-bold text-slate-600 mb-2">Start Year</label>
+                        <input type="number" id="monthly-start-year" value="2024" class="w-full p-3 border border-slate-300 rounded-lg text-lg text-center">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-slate-600 mb-2">End Year</label>
+                        <input type="number" id="monthly-end-year" value="2025" class="w-full p-3 border border-slate-300 rounded-lg text-lg text-center">
+                    </div>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="downloadSpecial('monthly', 'pdf')" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg font-bold shadow-sm">📄 Get PDF</button>
+                    <button onclick="downloadSpecial('monthly', 'excel')" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg font-bold shadow-sm">📥 Get Excel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DYNAMIC HOST CONNECTION: This ensures the frontend connects to whatever IP address it was loaded from.
+        const backendUrl = window.location.origin + "/api";
+        let chartPreviewInstance = null; let chartFullInstance = null; let currentReportData = null;
+
+        document.getElementById('start-date').valueAsDate = new Date();
+        document.getElementById('end-date').valueAsDate = new Date();
+        document.getElementById('daily-date').valueAsDate = new Date();
+        document.getElementById('monthly-start-year').value = new Date().getFullYear();
+        document.getElementById('monthly-end-year').value = new Date().getFullYear();
+
+        function openChartModal() {
+            if(!currentReportData) return;
+            document.getElementById('modal-title').innerText = "Full Consumption Analysis";
+            const body = document.getElementById('modal-body');
+            body.innerHTML = '<div style="position:relative; width:100%; min-height:1200px;"><canvas id="usageChartFull"></canvas></div>';
+            document.getElementById('modal-overlay').classList.add('active');
+
+            setTimeout(() => {
+                const ctx = document.getElementById('usageChartFull');
+                if(chartFullInstance) chartFullInstance.destroy();
+                chartFullInstance = new Chart(ctx, {
+                    type: 'bar',
+                    data: { labels: currentReportData.chartData.labels, datasets: [{ label: 'Total Usage (KG)', data: currentReportData.chartData.values, backgroundColor: '#3b82f6', borderRadius: 4 }] },
+                    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+                });
+            }, 100);
+        }
+
+        function openTableModal() {
+            if(!currentReportData) return;
+            document.getElementById('modal-title').innerText = "Complete Data & Totals";
+            const body = document.getElementById('modal-body');
+            let html = '<div class="overflow-x-auto"><table class="w-full text-left border-collapse"><thead><tr class="bg-slate-100 text-slate-600 uppercase text-sm">';
+            currentReportData.columns.forEach(col => html += `<th class="p-3 border-b">${col}</th>`);
+            html += '</tr></thead><tbody class="divide-y divide-slate-100">';
+            
+            currentReportData.tableData.forEach((row, i) => {
+                const isTotalRow = (i === currentReportData.tableData.length - 1);
+                html += `<tr class="${isTotalRow ? 'bg-blue-50 font-bold' : 'hover:bg-slate-50'}">`;
+                currentReportData.columns.forEach(col => {
+                    let val = row[col] !== null ? row[col] : '-';
+                    html += `<td class="p-3 ${typeof val === 'number' ? 'text-right' : ''}">${val}</td>`;
+                });
+                html += '</tr>';
+            });
+            html += '</tbody></table></div>';
+            body.innerHTML = html;
+            document.getElementById('modal-overlay').classList.add('active');
+        }
+
+        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+        async function generateReport() {
+            const btnText = document.getElementById('gen-btn-text'); const spinner = document.getElementById('gen-spinner');
+            const resultsArea = document.getElementById('results-area'); const errorContainer = document.getElementById('error-container');
+            const startDate = document.getElementById('start-date').value; const endDate = document.getElementById('end-date').value;
+
+            if(new Date(startDate) > new Date(endDate)) {
+                document.getElementById('error-msg').innerText = "Start Date cannot be after End Date.";
+                errorContainer.classList.remove('hidden'); return;
+            }
+
+            btnText.innerText = "Processing..."; spinner.classList.remove('hidden'); resultsArea.classList.add('hidden'); errorContainer.classList.add('hidden');
+
+            try {
+                const response = await fetch(`${backendUrl}/report`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ startDate, endDate })
+                });
+                if (!response.ok) throw new Error("Server Error");
+                const data = await response.json();
+                if (data.status === 'error') throw new Error(data.message);
+
+                currentReportData = data;
+                renderPreviewChart(data.chartData); renderPreviewTable(data.columns, data.tableData);
+                resultsArea.classList.remove('hidden'); 
+            } catch (error) {
+                document.getElementById('error-msg').innerText = error.message; errorContainer.classList.remove('hidden');
+            } finally {
+                btnText.innerText = "Generate Dashboard"; spinner.classList.add('hidden');
+            }
+        }
+
+        function downloadFile(type) {
+            const s = document.getElementById('start-date').value; const e = document.getElementById('end-date').value;
+            window.location.href = `${backendUrl}/export/${type}?startDate=${s}&endDate=${e}&reportType=main`;
+        }
+
+        function downloadSpecial(reportType, fileType) {
+            let s, e;
+            if(reportType === 'daily') {
+                s = e = document.getElementById('daily-date').value;
+            } else {
+                s = document.getElementById('monthly-start-year').value + "-01-01";
+                e = document.getElementById('monthly-end-year').value + "-12-31";
+            }
+            window.location.href = `${backendUrl}/export/${fileType}?startDate=${s}&endDate=${e}&reportType=${reportType}`;
+        }
+
+        function renderPreviewChart(chartData) {
+            const ctx = document.getElementById('usageChartPreview');
+            if(chartPreviewInstance) chartPreviewInstance.destroy();
+            const indices = chartData.values.map((val, i) => ({ val, label: chartData.labels[i] })).sort((a, b) => b.val - a.val).slice(0, 10);
+            chartPreviewInstance = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: indices.map(i => i.label), datasets: [{ label: 'Usage', data: indices.map(i => i.val), backgroundColor: '#3b82f6', borderRadius: 4 }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true }, x: { grid: { display: false } } } }
+            });
+        }
+
+        function renderPreviewTable(columns, rows) {
+            const thead = document.getElementById('table-header-preview'); const tbody = document.getElementById('table-body-preview');
+            thead.innerHTML = ''; tbody.innerHTML = '';
+            columns.forEach(col => { const th = document.createElement('th'); th.className="p-4"; th.innerText = col; thead.appendChild(th); });
+            
+            // Show first 5 rows + the very last row (which contains the Totals)
+            const previewRows = rows.slice(0, 4);
+            if (rows.length > 4) previewRows.push(rows[rows.length - 1]);
+
+            previewRows.forEach((row, index) => {
+                const isTotalRow = (row[columns[0]] && row[columns[0]].toString().includes("TOTAL WEIGHT"));
+                const tr = document.createElement('tr');
+                tr.className = isTotalRow ? "bg-blue-50 font-bold border-t-2 border-blue-200" : "hover:bg-slate-50";
+                
+                columns.forEach(col => {
+                    const td = document.createElement('td'); 
+                    td.innerText = row[col] !== null ? row[col] : '-';
+                    td.className = "p-4 " + (typeof row[col] === 'number' ? 'text-right' : '');
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+        }
+    </script>
+</body>
+</html>
